@@ -2,38 +2,55 @@ import streamlit as st
 import pandas as pd
 import io
 
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="CSV to Moodle XML",
+    page_icon="📝",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
+
+# --- 2. TEMPLATE GENERATOR ---
+@st.cache_data
+def get_template_csv():
+    """Generates a sample CSV template based on user's exact structure."""
+    csv_content = """Category,QuestionName,Year,Topic,SubTopic,Question,OptionA,OptionB,OptionC,OptionD,Answer,Feedback
+LF3-Bio-2015,LF3-Bio-2015 | Q01,2015,B1,B1.1,In atmosphere there is … of oxygen,21%,78%,2%,36%,A,"21% is the correct atmospheric O2 concentration. Earth’s atmosphere is composed of ~78% nitrogen, ~21% oxygen..."
+LF3-Bio-2015,LF3-Bio-2015 | Q02,2015,B1,B1.1,Which sequence of the pyramid of life in an ecosystem is correct?,solar energy - herbivores - plants - carnivores,solar energy - carnivores - herbivores - plants,solar energy - plants - carnivores - herbivores,solar energy - plants - herbivores - carnivores,D,"The correct trophic sequence is solar energy -> plants -> herbivores -> carnivores."
+"""
+    return csv_content.encode('utf-8')
+
+# --- 3. CONVERTER LOGIC ---
 def convert_csv_to_xml(df):
-    # Strip whitespace z názvů sloupců
     df.columns = df.columns.str.strip()
     
     if 'Category' in df.columns:
         df['Category'] = df['Category'].fillna('Default')
         df = df.sort_values(by='Category')
     
-    xml_content = ['<?xml version="1.0" encoding="UTF-8"?>', '<quiz>']
+    xml_content = ['<?xml version="1.0" encoding="UTF-8"?>\n<quiz>']
     current_category = None
 
     for index, row in df.iterrows():
-        # --- 1. CATEGORY HANDLING ---
+        # Category Handling
         row_category = str(row.get('Category', 'Default')).strip()
         if row_category != current_category:
             current_category = row_category
-            category_xml = f"""
+            xml_content.append(f"""
   <question type="category">
     <category>
       <text>top/{current_category}</text>
     </category>
-  </question>"""
-            xml_content.append(category_xml)
+  </question>""")
 
-        # --- 2. DATA EXTRACTION ---
+        # Data Extraction
         q_name = str(row.get('QuestionName', f'Question {index+1}'))
         q_text = str(row.get('Question', ''))
         g_feedback = str(row.get('Feedback', ''))
         if g_feedback == 'nan': g_feedback = ''
         correct_letter = str(row.get('Answer', '')).strip().upper()
 
-        # --- 3. TAGS ---
+        # Tags
         tags_list = []
         for col in ['Year', 'Topic', 'SubTopic']:
             val = row.get(col)
@@ -44,16 +61,17 @@ def convert_csv_to_xml(df):
         if tags_list:
             tags_xml = "    <tags>\n" + "\n".join([f"      <tag><text>{t}</text></tag>" for t in tags_list]) + "\n    </tags>"
 
-        # --- 4. ANSWERS ---
+        # Answers Helper
         def create_ans(opt_col, letter):
             fraction = "100" if letter == correct_letter else "0"
             opt_text = row.get(opt_col, '')
+            if pd.isna(opt_text): opt_text = ""
             return f"""    <answer fraction="{fraction}" format="html">
       <text><![CDATA[<p>{opt_text}</p>]]></text>
       <feedback format="html"><text></text></feedback>
     </answer>"""
 
-        # --- 5. BUILD XML ---
+        # Build Question XML
         question_xml = f"""
   <question type="multichoice">
     <name><text>{q_name}</text></name>
@@ -73,24 +91,48 @@ def convert_csv_to_xml(df):
     xml_content.append('</quiz>')
     return "\n".join(xml_content)
 
-# --- STREAMLIT UI ---
-st.title("📊 Moodle XML Převodník")
-st.write("Nahraj CSV a stáhni si hotový XML soubor pro Moodle.")
+# --- 4. APP UI ---
+st.title("📝 CSV to Moodle XML")
+st.markdown("A simple tool to convert your multiple-choice questions into Moodle-compatible XML format.")
 
-uploaded_file = st.file_uploader("Vyber CSV soubor", type="csv")
+st.divider()
+
+# Step 1: Template Download
+st.subheader("1. Download Template")
+st.markdown("Ensure your data matches the required format. You can download a sample CSV file below.")
+st.download_button(
+    label="⬇️ Download template.csv",
+    data=get_template_csv(),
+    file_name="moodle_template.csv",
+    mime="text/csv"
+)
+
+st.divider()
+
+# Step 2: File Upload
+st.subheader("2. Upload Your Data")
+uploaded_file = st.file_uploader("Upload your filled CSV file here:", type="csv")
 
 if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.success("Soubor úspěšně nahrán!")
-    
-    output_filename = st.text_input("Název výsledného souboru (bez přípony)", "questions")
-    
-    if st.button("Vygenerovat XML"):
-        result_xml = convert_csv_to_xml(df)
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success(f"File uploaded successfully! ({len(df)} questions detected)")
         
-        st.download_button(
-            label="⬇️ Stáhnout XML",
-            data=result_xml,
-            file_name=f"{output_filename}.xml",
-            mime="application/xml"
-        )
+        # Step 3: Convert and Download
+        st.subheader("3. Convert & Download")
+        output_filename = st.text_input("Name your output file:", "moodle_questions")
+        
+        if st.button("Generate XML", type="primary"):
+            with st.spinner('Converting...'):
+                result_xml = convert_csv_to_xml(df)
+            
+            st.download_button(
+                label="⬇️ Download XML File",
+                data=result_xml,
+                file_name=f"{output_filename}.xml",
+                mime="application/xml"
+            )
+            st.balloons() # A little celebration effect when it's done!
+            
+    except Exception as e:
+        st.error(f"An error occurred while reading the CSV: {e}")
