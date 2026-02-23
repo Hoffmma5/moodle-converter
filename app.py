@@ -4,7 +4,7 @@ import io
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="CSV to Moodle XML",
+    page_title="Moodle XML Converter",
     page_icon="📝",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -12,16 +12,38 @@ st.set_page_config(
 
 # --- 2. TEMPLATE GENERATOR ---
 @st.cache_data
-def get_template_csv():
-    """Generates a sample CSV template based on user's exact structure."""
-    csv_content = """Category,QuestionName,Year,Topic,SubTopic,Question,OptionA,OptionB,OptionC,OptionD,Answer,Feedback
-LF3-Bio-2015,LF3-Bio-2015 | Q01,2015,B1,B1.1,In atmosphere there is … of oxygen,21%,78%,2%,36%,A,"21% is the correct atmospheric O2 concentration. Earth’s atmosphere is composed of ~78% nitrogen, ~21% oxygen..."
-LF3-Bio-2015,LF3-Bio-2015 | Q02,2015,B1,B1.1,Which sequence of the pyramid of life in an ecosystem is correct?,solar energy - herbivores - plants - carnivores,solar energy - carnivores - herbivores - plants,solar energy - plants - carnivores - herbivores,solar energy - plants - herbivores - carnivores,D,"The correct trophic sequence is solar energy -> plants -> herbivores -> carnivores."
-"""
-    return csv_content.encode('utf-8')
+def get_template_excel():
+    """Generates a sample Excel template on the fly."""
+    # Create a dataframe with the sample data
+    data = {
+        'Category': ['LF3-Bio-2015', 'LF3-Bio-2015'],
+        'QuestionName': ['LF3-Bio-2015 | Q01', 'LF3-Bio-2015 | Q02'],
+        'Year': [2015, 2015],
+        'Topic': ['B1', 'B1'],
+        'SubTopic': ['B1.1', 'B1.1'],
+        'Question': ['In atmosphere there is … of oxygen', 'Which sequence of the pyramid of life in an ecosystem is correct?'],
+        'OptionA': ['21%', 'solar energy - herbivores - plants - carnivores'],
+        'OptionB': ['78%', 'solar energy - carnivores - herbivores - plants'],
+        'OptionC': ['2%', 'solar energy - plants - carnivores - herbivores'],
+        'OptionD': ['36%', 'solar energy - plants - herbivores - carnivores'],
+        'Answer': ['A', 'D'],
+        'Feedback': [
+            '21% is the correct atmospheric O2 concentration. Earth’s atmosphere is composed of ~78% nitrogen, ~21% oxygen...', 
+            'The correct trophic sequence is solar energy -> plants -> herbivores -> carnivores.'
+        ]
+    }
+    df = pd.DataFrame(data)
+    
+    # Convert DataFrame to an Excel file in memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Questions')
+    
+    return output.getvalue()
 
 # --- 3. CONVERTER LOGIC ---
-def convert_csv_to_xml(df):
+def convert_df_to_xml(df):
+    # Ensure all column names are stripped of accidental spaces
     df.columns = df.columns.str.strip()
     
     if 'Category' in df.columns:
@@ -92,30 +114,36 @@ def convert_csv_to_xml(df):
     return "\n".join(xml_content)
 
 # --- 4. APP UI ---
-st.title("📝 CSV to Moodle XML")
+st.title("📝 Excel to Moodle XML")
 st.markdown("A simple tool to convert your multiple-choice questions into Moodle-compatible XML format.")
 
 st.divider()
 
 # Step 1: Template Download
 st.subheader("1. Download Template")
-st.markdown("Ensure your data matches the required format. You can download a sample CSV file below.")
+st.markdown("Ensure your data matches the required format. Download the Excel template below.")
 st.download_button(
-    label="⬇️ Download template.csv",
-    data=get_template_csv(),
-    file_name="moodle_template.csv",
-    mime="text/csv"
+    label="⬇️ Download template.xlsx",
+    data=get_template_excel(),
+    file_name="moodle_template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 st.divider()
 
 # Step 2: File Upload
 st.subheader("2. Upload Your Data")
-uploaded_file = st.file_uploader("Upload your filled CSV file here:", type="csv")
+# Now accepts both Excel and CSV!
+uploaded_file = st.file_uploader("Upload your filled Excel or CSV file here:", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
-        df = pd.read_csv(uploaded_file)
+        # Check file type and read accordingly
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+            
         st.success(f"File uploaded successfully! ({len(df)} questions detected)")
         
         # Step 3: Convert and Download
@@ -124,7 +152,7 @@ if uploaded_file is not None:
         
         if st.button("Generate XML", type="primary"):
             with st.spinner('Converting...'):
-                result_xml = convert_csv_to_xml(df)
+                result_xml = convert_df_to_xml(df)
             
             st.download_button(
                 label="⬇️ Download XML File",
@@ -132,7 +160,7 @@ if uploaded_file is not None:
                 file_name=f"{output_filename}.xml",
                 mime="application/xml"
             )
-            st.balloons() # A little celebration effect when it's done!
+            st.balloons()
             
     except Exception as e:
-        st.error(f"An error occurred while reading the CSV: {e}")
+        st.error(f"An error occurred while reading the file: {e}")
