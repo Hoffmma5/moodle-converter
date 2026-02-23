@@ -4,17 +4,16 @@ import io
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Moodle XML Converter",
+    page_title="Excel to Moodle XML",
     page_icon="📝",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. TEMPLATE GENERATOR ---
+# --- 2. TEMPLATE GENERATOR (EXCEL) ---
 @st.cache_data
 def get_template_excel():
     """Generates a sample Excel template on the fly."""
-    # Create a dataframe with the sample data
     data = {
         'Category': ['LF3-Bio-2015', 'LF3-Bio-2015'],
         'QuestionName': ['LF3-Bio-2015 | Q01', 'LF3-Bio-2015 | Q02'],
@@ -43,7 +42,6 @@ def get_template_excel():
 
 # --- 3. CONVERTER LOGIC ---
 def convert_df_to_xml(df):
-    # Ensure all column names are stripped of accidental spaces
     df.columns = df.columns.str.strip()
     
     if 'Category' in df.columns:
@@ -115,7 +113,7 @@ def convert_df_to_xml(df):
 
 # --- 4. APP UI ---
 st.title("📝 Excel to Moodle XML")
-st.markdown("A simple tool to convert your multiple-choice questions into Moodle-compatible XML format.")
+st.markdown("A simple tool to convert your multiple-choice questions from an Excel table into a Moodle-compatible XML format.")
 
 st.divider()
 
@@ -131,19 +129,14 @@ st.download_button(
 
 st.divider()
 
-# Step 2: File Upload
+# Step 2: File Upload (EXCEL ONLY)
 st.subheader("2. Upload Your Data")
-# Now accepts both Excel and CSV!
-uploaded_file = st.file_uploader("Upload your filled Excel or CSV file here:", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("Upload your filled Excel (.xlsx) file here:", type=["xlsx"])
 
 if uploaded_file is not None:
     try:
-        # Check file type and read accordingly
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-            
+        # Read the Excel file using pandas
+        df = pd.read_excel(uploaded_file)
         st.success(f"File uploaded successfully! ({len(df)} questions detected)")
         
         # Step 3: Convert and Download
@@ -163,4 +156,4 @@ if uploaded_file is not None:
             st.balloons()
             
     except Exception as e:
-        st.error(f"An error occurred while reading the file: {e}")
+        st.error(f"An error occurred while reading the Excel file: {e}")
